@@ -63,6 +63,14 @@ import {
 	type VisibleCardPreviewMode,
 } from "./card-preview";
 
+const TASK_STATUS_PROPERTY_NAME = "Task Status";
+function isTaskStatusProperty(propertyId: BasesPropertyId): boolean {
+	const parsed = parsePropertyId(propertyId);
+	return parsed.type === "note" && parsed.name === TASK_STATUS_PROPERTY_NAME;
+}
+const TASK_DONE_PROPERTY_NAME = "Done?";
+const TASK_STATUS_OPTIONS = ["Not started", "In progress", "Done", "Skipped"];
+
 export const KANBAN_VIEW_TYPE = "kanban-ttvl"; // "kanban" is taken by the built-in view since Obsidian 1.15
 export const KANBAN_VIEW_NAME = "Kanban";
 export const KANBAN_VIEW_ICON = "lucide-columns-3";
@@ -923,7 +931,50 @@ class BasesKanbanScaffoldView extends BasesView implements HoverParent {
 			}
 
 			propertyItem.value.renderTo(valueEl, renderContext);
+
+			if (isTaskStatusProperty(propertyItem.propertyId)) {
+				this.makeTaskStatusSwitchable(valueEl, entry);
+			}
 		}
+	}
+
+	// Tap on "Task Status" value opens a menu to switch status right on the card.
+	// "Done" also sets "Done?: true", other statuses set it back to false.
+	private makeTaskStatusSwitchable(valueEl: HTMLElement, entry: BasesEntry): void {
+		valueEl.addClass("bases-kanban-card-property-value--switchable");
+		setTooltip(valueEl, "Change status", { placement: "top" });
+		const stop = (event: Event) => event.stopPropagation();
+		valueEl.addEventListener("mousedown", stop);
+		valueEl.addEventListener("pointerdown", stop);
+		valueEl.addEventListener("touchstart", stop, { passive: true });
+		valueEl.addEventListener("click", (event) => {
+			event.preventDefault();
+			event.stopPropagation();
+			const current = String(
+				this.app.metadataCache.getFileCache(entry.file)?.frontmatter?.[
+					TASK_STATUS_PROPERTY_NAME
+				] ?? "",
+			);
+			const menu = new Menu();
+			for (const status of TASK_STATUS_OPTIONS) {
+				menu.addItem((item) => {
+					item.setTitle(status)
+						.setChecked(status === current)
+						.onClick(() => {
+							void this.app.fileManager.processFrontMatter(
+								entry.file,
+								(frontmatter: Record<string, unknown>) => {
+									frontmatter[TASK_STATUS_PROPERTY_NAME] = status;
+									if (TASK_DONE_PROPERTY_NAME in frontmatter || status === "Done") {
+										frontmatter[TASK_DONE_PROPERTY_NAME] = status === "Done";
+									}
+								},
+							);
+						});
+				});
+			}
+			menu.showAtMouseEvent(event);
+		});
 	}
 
 	private renderCardDateProperty(
