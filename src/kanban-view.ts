@@ -63,7 +63,7 @@ import {
 	type VisibleCardPreviewMode,
 } from "./card-preview";
 
-export const KANBAN_VIEW_TYPE = "kanban";
+export const KANBAN_VIEW_TYPE = "kanban-ttvl"; // "kanban" is taken by the built-in view since Obsidian 1.15
 export const KANBAN_VIEW_NAME = "Kanban";
 export const KANBAN_VIEW_ICON = "lucide-columns-3";
 export const KANBAN_HOVER_SOURCE = "bases-kanban-view-ttvl";
