@@ -10,6 +10,11 @@ on:
   push:
     tags:
       - "[0-9]*.[0-9]*.[0-9]*"
+    # A version bump in manifest.json on main publishes a release by itself.
+    branches:
+      - main
+    paths:
+      - manifest.json
 
 permissions:
   attestations: write
@@ -31,18 +36,42 @@ jobs:
         with:
           ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
 
+      - name: Resolve release tag
+        id: tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            tag="$INPUT_TAG"
+          elif [ "${{ github.ref_type }}" = "tag" ]; then
+            tag="${{ github.ref_name }}"
+          else
+            tag="$(node -p 'require("./manifest.json").version')"
+          fi
+          echo "name=$tag" >> "$GITHUB_OUTPUT"
+          skip=false
+          if [ "${{ github.ref_type }}" = "branch" ] && [ "${{ github.event_name }}" = "push" ] \
+            && gh release view "$tag" --json assets -q '.assets[].name' 2>/dev/null | grep -qx main.js; then
+            skip=true
+          fi
+          echo "skip=$skip" >> "$GITHUB_OUTPUT"
+
       - name: Set up Node.js
+        if: steps.tag.outputs.skip != 'true'
         uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
 
       - name: Install dependencies
+        if: steps.tag.outputs.skip != 'true'
         run: npm ci
 
       - name: Validate release metadata
+        if: steps.tag.outputs.skip != 'true'
         env:
-          TAG_NAME: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+          TAG_NAME: ${{ steps.tag.outputs.name }}
         run: |
           node <<'NODE'
           const fs = require("node:fs");
@@ -90,18 +119,23 @@ jobs:
           NODE
 
       - name: Run tests
+        if: steps.tag.outputs.skip != 'true'
         run: npm test
 
       - name: Run lint
+        if: steps.tag.outputs.skip != 'true'
         run: npm run lint
 
       - name: Build release assets
+        if: steps.tag.outputs.skip != 'true'
         run: npm run build
 
       - name: Verify release assets
+        if: steps.tag.outputs.skip != 'true'
         run: test -s main.js && test -s manifest.json && test -s styles.css
 
       - name: Generate artifact attestations
+        if: steps.tag.outputs.skip != 'true'
         uses: actions/attest@v4
         with:
           subject-path: |
@@ -110,9 +144,10 @@ jobs:
             styles.css
 
       - name: Create GitHub release
+        if: steps.tag.outputs.skip != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG_NAME: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+          TAG_NAME: ${{ steps.tag.outputs.name }}
         run: |
           if gh release view "$TAG_NAME" >/dev/null 2>&1; then
             gh release upload "$TAG_NAME" \
@@ -121,7 +156,7 @@ jobs:
           else
             gh release create "$TAG_NAME" \
               main.js manifest.json styles.css \
-              --verify-tag \
+              --target "${{ github.sha }}" \
               --title "$TAG_NAME" \
-              --generate-notes
+              --notes "$(git log -1 --pretty=%B)" 
           fi
