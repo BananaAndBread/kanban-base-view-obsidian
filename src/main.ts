@@ -7,6 +7,7 @@ import {
 	type KanbanGlobalSettings,
 	type KanbanSettingsSource,
 } from "./kanban-view";
+import { registerDoneStatusSync } from "./done-status-sync";
 
 export default class BasesKanbanViewPlugin extends Plugin {
 	private readonly settingsStore = new KanbanSettingsStore();
@@ -16,6 +17,7 @@ export default class BasesKanbanViewPlugin extends Plugin {
 			normalizeKanbanGlobalSettings(await this.loadData()),
 		);
 		registerKanbanView(this, this.settingsStore);
+		registerDoneStatusSync(this);
 		this.addSettingTab(new KanbanSettingTab(this.app, this));
 	}
 
